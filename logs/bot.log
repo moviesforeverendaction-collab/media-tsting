@@ -1,0 +1,132 @@
+2026-03-13 10:23:38,400 | INFO     | app | Detected platform: VPS/Local
+2026-03-13 10:23:39,203 | INFO     | app | MongoDB connected ✓
+2026-03-13 10:23:39,572 | INFO     | database.mongo | MongoDB indexes ensured ✓
+2026-03-13 10:23:39,573 | INFO     | app | HTTP server started on port 8080 ✓
+2026-03-13 10:23:39,574 | INFO     | app | Starting bot...
+2026-03-13 10:23:48,219 | INFO     | app | Bot started as @Jiyanzbot ✓
+2026-03-13 10:23:48,219 | INFO     | app | Bot is running. Press Ctrl+C to stop.
+2026-03-13 10:23:48,219 | INFO     | app | Worker loop started.
+2026-03-13 10:23:48,220 | INFO     | modules.ping | Platform: VPS/Local — Self-ping disabled (no APP_URL).
+2026-03-13 10:23:55,437 | INFO     | httpx | HTTP Request: GET https://picsum.photos/800/1000?random&blur=1 "HTTP/1.1 302 Found"
+2026-03-13 10:23:55,563 | INFO     | httpx | HTTP Request: GET https://fastly.picsum.photos/id/1016/800/1000.jpg?blur=1&hmac=1EERdzluRptnfxuFtOAKE9ZOTkrjMdrlgLzHT0Ac7_Q "HTTP/1.1 200 OK"
+2026-03-13 10:24:42,402 | INFO     | httpx | HTTP Request: GET https://www.youtube.com/oembed?url=https://www.youtube.com/shorts/z1aZuQyKNWY&format=json "HTTP/1.1 200 OK"
+2026-03-13 10:24:42,404 | INFO     | modules.download | YouTube oEmbed 656ms
+2026-03-13 10:25:31,300 | INFO     | app | Job complete: user=1633472140 size=13.5MB
+2026-03-13 10:26:12,533 | INFO     | httpx | HTTP Request: GET https://open.spotify.com/playlist/1tKJmeA9o3wuyMSvlUh7Ig "HTTP/1.1 200 OK"
+2026-03-13 10:26:12,744 | WARNING  | modules.download | Metadata fetch failed [https://open.spotify.com/playlist/1tKJmeA9o3wuyMSvlUh7Ig?si=]: [0;31mERROR:[0m [DRM] The requested site is known to use DRM protection. It will [0;94mNOT[0m be supported.
+       Please [0;31mDO NOT[0m open an issue, unless you have evidence that the video is not DRM protected
+2026-03-13 10:28:06,090 | INFO     | httpx | HTTP Request: GET https://open.spotify.com/oembed?url=https://open.spotify.com/track/0s76ExpXyMGVBlKLUr683e?si=83d42ac90c8d415a "HTTP/1.1 200 OK"
+2026-03-13 10:28:06,493 | INFO     | httpx | HTTP Request: GET https://open.spotify.com/track/0s76ExpXyMGVBlKLUr683e "HTTP/1.1 200 OK"
+2026-03-13 10:28:10,691 | INFO     | modules.download | spotDL: spotdl download https://open.spotify.com/track/0s76ExpXyMGVBlKLUr683e?si=83d42ac90c8d415a --output {title} - {artists} --format mp3 --bitrate 320k --threads 1
+2026-03-13 10:28:27,551 | INFO     | modules.download | spotDL: spotdl download https://open.spotify.com/track/0s76ExpXyMGVBlKLUr683e?si=83d42ac90c8d415a --output {title} - {artists} --format mp3 --bitrate 320k --threads 1
+2026-03-13 10:31:09,790 | INFO     | httpx | HTTP Request: GET https://music.apple.com/in/playlist/pl.0694b91057dc4a069c9eb00057b1f738 "HTTP/1.1 301 Moved Permanently"
+2026-03-13 10:31:10,638 | INFO     | httpx | HTTP Request: GET https://music.apple.com/in/playlist/best-of-coke-studio/pl.0694b91057dc4a069c9eb00057b1f738 "HTTP/1.1 200 OK"
+2026-03-13 10:31:12,325 | WARNING  | modules.download | Metadata fetch failed [https://music.apple.com/in/playlist/best-of-coke-studio/pl.0]: [0;31mERROR:[0m Unsupported URL: https://music.apple.com/in/playlist/best-of-coke-studio/pl.0694b91057dc4a069c9eb00057b1f738
+2026-03-13 10:40:33,018 | INFO     | app | Detected platform: VPS/Local
+2026-03-13 10:40:34,081 | INFO     | app | MongoDB connected ✓
+2026-03-13 10:40:34,484 | INFO     | database.mongo | MongoDB indexes ensured ✓
+2026-03-13 10:40:34,485 | INFO     | app | HTTP server started on port 8080 ✓
+2026-03-13 10:40:34,485 | INFO     | app | Starting bot...
+2026-03-13 10:40:35,667 | INFO     | app | Bot started as @Jiyanzbot ✓
+2026-03-13 10:40:35,668 | INFO     | app | Bot is running. Press Ctrl+C to stop.
+2026-03-13 10:40:35,668 | INFO     | app | Worker loop started.
+2026-03-13 10:40:35,668 | INFO     | modules.ping | Platform: VPS/Local — Self-ping disabled (no APP_URL).
+2026-03-13 10:40:39,796 | INFO     | httpx | HTTP Request: GET https://picsum.photos/800/1000?random&blur=1 "HTTP/1.1 302 Found"
+2026-03-13 10:40:40,914 | INFO     | httpx | HTTP Request: GET https://fastly.picsum.photos/id/664/800/1000.jpg?blur=1&hmac=RjrKRUlSyGzmBKGVHcT1Laq5KhC1H7eOZXt7LDmf2J8 "HTTP/1.1 200 OK"
+2026-03-13 10:40:54,773 | INFO     | httpx | HTTP Request: GET https://music.apple.com/in/playlist/pl.0694b91057dc4a069c9eb00057b1f738 "HTTP/1.1 301 Moved Permanently"
+2026-03-13 10:40:55,224 | INFO     | httpx | HTTP Request: GET https://music.apple.com/in/playlist/best-of-coke-studio/pl.0694b91057dc4a069c9eb00057b1f738 "HTTP/1.1 200 OK"
+2026-03-13 10:40:55,272 | INFO     | modules.download | Apple Music playlist strategy 2: 0 tracks
+2026-03-13 10:40:55,273 | INFO     | modules.download | Apple Music playlist strategy 3: 10 tracks
+2026-03-13 10:41:02,877 | INFO     | modules.download | Apple Music: searching YouTube for ' - Khalasi Coke Studio Bharat'
+2026-03-13 10:41:04,297 | INFO     | modules.download | Apple Music: matched → https://www.youtube.com/watch?v=6c3mAtStIxo
+2026-03-13 10:41:10,431 | INFO     | modules.download | Apple Music done: 6c3mAtStIxo.mp3 (10.5 MB)
+2026-03-13 10:41:27,887 | INFO     | app | Job complete: user=1633472140 size=10.5MB
+2026-03-13 10:46:13,274 | WARNING  | pyrogram.connection.connection | Unable to connect due to network issues: [WinError 1231] The network location cannot be reached. For information about network troubleshooting, see Windows Help
+2026-03-13 10:46:37,578 | ERROR    | app | Worker loop error: ac-buyanic-shard-00-02.5fuk3xn.mongodb.net:27017: timed out (configured timeouts: connectTimeoutMS: 20000.0ms)
+2026-03-13 10:46:50,706 | INFO     | httpx | HTTP Request: GET https://picsum.photos/800/1000?random&blur=1 "HTTP/1.1 302 Found"
+2026-03-13 10:46:51,917 | INFO     | httpx | HTTP Request: GET https://fastly.picsum.photos/id/793/800/1000.jpg?blur=1&hmac=H5YafCnlWfMua5l4Dyan39Eh5sTHBtOPlk3h2z5vQGk "HTTP/1.1 200 OK"
+2026-03-13 10:47:02,008 | WARNING  | pyrogram.connection.connection | Unable to connect due to network issues: Connection timed out
+2026-03-13 10:47:13,043 | WARNING  | pyrogram.connection.connection | Unable to connect due to network issues: Connection timed out
+2026-03-13 12:37:10,253 | INFO     | app | Detected platform: VPS/Local
+2026-03-13 12:37:32,330 | INFO     | app | MongoDB connected ✓
+2026-03-13 12:37:32,658 | INFO     | database.mongo | MongoDB indexes ensured ✓
+2026-03-13 12:37:32,660 | INFO     | app | HTTP server started on port 8080 ✓
+2026-03-13 12:37:32,661 | INFO     | app | Starting bot...
+2026-03-13 12:37:43,375 | WARNING  | pyrogram.connection.connection | Unable to connect due to network issues: Connection timed out
+2026-03-13 12:37:47,376 | INFO     | app | Bot started as @Jiyanzbot ✓
+2026-03-13 12:37:47,376 | INFO     | app | Bot is running. Press Ctrl+C to stop.
+2026-03-13 12:37:47,376 | INFO     | app | Worker loop started.
+2026-03-13 12:37:47,376 | INFO     | modules.ping | Platform: VPS/Local — Self-ping disabled (no APP_URL).
+2026-03-13 12:38:08,798 | INFO     | httpx | HTTP Request: GET https://picsum.photos/800/1000?random&blur=1 "HTTP/1.1 302 Found"
+2026-03-13 12:38:09,972 | INFO     | httpx | HTTP Request: GET https://fastly.picsum.photos/id/93/800/1000.jpg?blur=1&hmac=MDo-GGO7HH7CEyS2331lrIMgvelKV6r6MuHAMtKeJLE "HTTP/1.1 200 OK"
+2026-03-13 12:38:32,680 | WARNING  | pyrogram.session.session | [mediafetch_bot] Waiting for 5 seconds before continuing (required by "users.GetFullUser")
+2026-03-13 12:38:35,329 | WARNING  | pyrogram.session.session | [mediafetch_bot] Waiting for 3 seconds before continuing (required by "users.GetFullUser")
+2026-03-13 12:38:38,902 | ERROR    | pyrogram.dispatcher | Telegram says: [400 MESSAGE_NOT_MODIFIED] - The message was not modified because you tried to edit it using the same content (caused by "messages.EditMessage")
+Traceback (most recent call last):
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\dispatcher.py", line 240, in handler_worker
+    await handler.callback(self.client, *args)
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\handlers.py", line 335, in cb_ui
+    await _send_stats(client, cb.message.chat.id, edit_msg=cb.message)
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\handlers.py", line 119, in _send_stats
+    await edit_msg.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_keyboard())
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\types\messages_and_media\message.py", line 2803, in edit_text
+    return await self._client.edit_message_text(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\methods\messages\edit_message_text.py", line 82, in edit_message_text
+    r = await self.invoke(
+        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\methods\advanced\invoke.py", line 79, in invoke
+    r = await self.session.invoke(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\session\session.py", line 389, in invoke
+    return await self.send(query, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\session\session.py", line 357, in send
+    RPCError.raise_it(result, type(data))
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\errors\rpc_error.py", line 91, in raise_it
+    raise getattr(
+pyrogram.errors.exceptions.bad_request_400.MessageNotModified: Telegram says: [400 MESSAGE_NOT_MODIFIED] - The message was not modified because you tried to edit it using the same content (caused by "messages.EditMessage")
+2026-03-13 12:39:04,988 | INFO     | modules.download | spotDL save: spotdl save https://open.spotify.com/playlist/1tKJmeA9o3wuyMSvlUh7Ig?si=1yNaRAAsR1y9McGTAVbQHQ --save-file c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\tmp\sp_save_2n44j6wu\tracks.spotdl
+2026-03-13 12:39:04,996 | ERROR    | pyrogram.dispatcher | spotDL not found. Install: pip install spotdl
+Traceback (most recent call last):
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\download.py", line 1169, in _spotdl_save
+    proc = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\AppData\Local\Programs\Python\Python312\Lib\asyncio\tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Ankus\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\download.py", line 1163, in _run
+    return subprocess.run(
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ankus\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "C:\Users\Ankus\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1538, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 2] The system cannot find the file specified
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\venv\Lib\site-packages\pyrogram\dispatcher.py", line 240, in handler_worker
+    await handler.callback(self.client, *args)
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\handlers.py", line 203, in handle_url
+    await _handle_playlist(client, msg, status, url, user_id)
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\handlers.py", line 277, in _handle_playlist
+    pl = await fetch_playlist_metadata(url)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\download.py", line 1277, in fetch_playlist_metadata
+    return await fetch_spotify_playlist_metadata(url)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\download.py", line 1220, in fetch_spotify_playlist_metadata
+    songs = await _spotdl_save(url)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\Ankus\Music\Work World\Work place\Youtube downloader\latest\fixed_bot\modules\download.py", line 1191, in _spotdl_save
+    raise ValueError("spotDL not found. Install: pip install spotdl")
+ValueError: spotDL not found. Install: pip install spotdl

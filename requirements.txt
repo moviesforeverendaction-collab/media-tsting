@@ -1,0 +1,19 @@
+# Core
+pyrogram==2.0.106
+TgCrypto
+aiohttp
+aiofiles
+httpx[http2]
+
+# Downloader
+yt-dlp
+
+# Database
+motor
+pymongo
+
+# Spotify
+spotdl
+
+# Utils
+python-dotenv

@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "DOCKERFILE"
+  },
+  "deploy": {
+    "startCommand": "python app.py",
+    "healthcheckPath": "/ping",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
