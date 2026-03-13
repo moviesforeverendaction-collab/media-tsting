@@ -5,8 +5,8 @@ aiohttp
 aiofiles
 httpx[http2]
 
-# Downloader
-yt-dlp
+# Downloader — always get latest yt-dlp for YouTube compatibility
+yt-dlp>=2024.12.13
 
 # Database
 motor
