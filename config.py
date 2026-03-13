@@ -9,12 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
-API_ID    = int(os.getenv("API_ID", "34857357"))
-API_HASH  = os.getenv("API_HASH", "1e8f2a02989b22ef1e55340375bbdaa8")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7888814734:AAG3cfiTkIvm6NzIVZhpPv7SB3JNOWbpD_k")
+API_ID    = int(os.getenv("API_ID", ""))
+API_HASH  = os.getenv("API_HASH", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 # ── MongoDB ───────────────────────────────────────────────────────────────────
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://LastPerson07:N7z0DRcklsZzqCzd@storagebot.5fuk3xn.mongodb.net/?appName=StorageBot")
+MONGO_URI = os.getenv("MONGO_URI", "")
 MONGO_DB  = os.getenv("MONGO_DB",  "mediafetch")
 
 # ── Spotify (spotDL) ──────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ SPOTDL_BIN = os.getenv("SPOTDL_BIN", "spotdl")
 # ── Apple Music ───────────────────────────────────────────────────────────────
 # No tokens or cookies needed.
 # Flow: iTunes API (metadata) → YouTube Music search → yt-dlp (download)
-AM_STOREFRONT = os.getenv("AM_STOREFRONT", "us")
+AM_STOREFRONT = os.getenv("AM_STOREFRONT", "in")
 
 # ── Limits ────────────────────────────────────────────────────────────────────
 MAX_FILE_SIZE_MB   = int(os.getenv("MAX_FILE_SIZE_MB",   "2000"))
