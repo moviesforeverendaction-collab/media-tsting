@@ -5,7 +5,7 @@ aiohttp
 aiofiles
 httpx[http2]
 
-# Downloader — always get latest yt-dlp for YouTube compatibility
+# Downloader — 2024.12.13+ required for bgutil POT plugin support
 yt-dlp>=2024.12.13
 
 # Database
