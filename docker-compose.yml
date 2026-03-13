@@ -10,13 +10,6 @@ services:
     volumes:
       - ./tmp:/app/tmp
       - ./logs:/app/logs
-    environment:
-      # Override these in .env — listed here as documentation
-      # MONGO_URI defaults to the local mongo service below
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=mediafetch
-      # No APP_URL needed — self-ping is disabled on VPS/local
-      - APP_URL=
     depends_on:
       mongo:
         condition: service_healthy
