@@ -1,15 +1,20 @@
 FROM python:3.12-slim
 
+# Install system deps (gcc needed for TgCrypto, ffmpeg for media processing)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         gcc \
         build-essential \
-    && pip install uv \
-    && uv pip install --system --no-cache -r requirements.txt \
-    && apt-get purge -y gcc build-essential \
-    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /app
+
+# Install Python deps first (better layer caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade yt-dlp
+
+# Copy source
 COPY . .
 RUN mkdir -p tmp logs
 
