@@ -151,9 +151,8 @@ def register_handlers(app: Client):
     async def cmd_request(client: Client, msg: Message):
         await msg.reply_text(
             f"{CE_BELL} <b>Feature Request</b>\n\n"
-            "Have a platform you want us to support?\n"
-            "Tell us what you'd like added — just reply or send a message with the platform name "
-            "and a sample link.\n\n"
+            "Have a platform you want us to support or a bug to report?\n"
+            "Please open an issue on our GitHub repository or contact the developer directly.\n\n"
             "<i>We review all requests and add popular ones in updates!</i>",
             parse_mode=ParseMode.HTML,
         )
@@ -561,18 +560,18 @@ def register_handlers(app: Client):
                 r.raise_for_status()
                 bio      = BytesIO(r.content)
                 bio.name = "thumbnail.jpg"
-            await status.delete()
             await client.send_photo(
                 chat_id=cb.message.chat.id,
                 photo=bio,
                 caption="🖼 <b>Thumbnail</b>",
                 parse_mode=ParseMode.HTML,
             )
+            await status.delete()
         except Exception as e:
             logger.error(f"Thumbnail fetch failed: {e}")
             try:
                 await status.edit_text(
-                    f"{CE_CROSS} <b>Thumbnail error.</b>", parse_mode=ParseMode.HTML
+                    f"{CE_CROSS} <b>Thumbnail error.</b> Could not send photo.", parse_mode=ParseMode.HTML
                 )
             except Exception:
                 pass
