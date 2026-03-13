@@ -1,17 +1,14 @@
 """
 app.py — MediaFetch Bot entry point.
 
-Hosts:
-  VPS / Docker Compose  →  docker-compose up
-  Render                →  render.yaml  (env: docker)
-  Railway               →  railway.json (DOCKERFILE builder)
-  Heroku                →  Procfile + Aptfile (heroku-community/apt for ffmpeg)
-  Fly.io                →  fly.toml
-
 HTTP server on $PORT (default 8080):
   GET /       → 200 "MediaFetch Bot is running"
   GET /ping   → 200 "pong"
   GET /health → 200 JSON stats
+
+YouTube bot-detection bypass (bgutil PO-token server):
+  Runs on 127.0.0.1:4416 — started at boot, transparent to yt-dlp via plugin.
+  Generates real Google BotGuard PO tokens. No cookies needed.
 """
 
 import asyncio
@@ -58,14 +55,10 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logging.getLogger("motor").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
+
 # ── HTTP server ───────────────────────────────────────────────────────────────
 
 async def start_http_server():
-    """
-    Tiny aiohttp server.
-    All hosting platforms need an HTTP endpoint alive for health checks.
-    PORT env var is set automatically by Render / Railway / Heroku / Fly.
-    """
     port = int(os.getenv("PORT", "8080"))
 
     async def handle_root(request):
@@ -91,6 +84,138 @@ async def start_http_server():
     await site.start()
     logger.info(f"HTTP server listening on 0.0.0.0:{port} ✓")
     return runner
+
+
+# ── yt-dlp auto-update ────────────────────────────────────────────────────────
+
+async def _update_ytdlp():
+    """Upgrade yt-dlp on every startup — YouTube anti-bot patches ship weekly."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "pip", "install", "--upgrade", "--quiet", "yt-dlp",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        if proc.returncode == 0:
+            import yt_dlp as _ydlp
+            logger.info(f"yt-dlp updated ✓  (version: {_ydlp.version.__version__})")
+        else:
+            logger.warning(f"yt-dlp update skipped: {stderr.decode()[:200]}")
+    except asyncio.TimeoutError:
+        logger.warning("yt-dlp update timed out (non-fatal)")
+    except Exception as e:
+        logger.warning(f"yt-dlp update failed (non-fatal): {e}")
+
+
+# ── bgutil PO-token server ────────────────────────────────────────────────────
+#
+# PROBLEM
+# ───────
+# YouTube blocks downloads from datacenter IPs (Render/Railway/Fly) with:
+#   "Sign in to confirm you're not a bot"
+# This breaks YouTube, Spotify (spotDL uses YouTube), and Apple Music
+# (matched via YouTube search) — all three fail from the same root cause.
+#
+# SOLUTION
+# ────────
+# Generate a real Proof-of-Origin (PO) token by running Google's BotGuard
+# JavaScript challenge — exactly what Chrome does. No cookies needed.
+#
+# ARCHITECTURE
+# ────────────
+# 1. bgutil server  → Node.js at 127.0.0.1:4416
+#    Built into Docker image at /bgutil/server/ via:
+#      git clone https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+#      cd server && npm ci && npm run build
+#
+# 2. bgutil-ytdlp-pot-provider (pip package)
+#    → yt-dlp plugin, auto-detects server at 127.0.0.1:4416
+#    → Injects PO token into every YouTube request — zero code changes in
+#      download.py needed, fully transparent
+#
+# RESULT: All YouTube downloads work → Spotify and Apple Music work too
+# ─────────────────────────────────────────────────────────────────────────────
+
+_bgutil_proc: asyncio.subprocess.Process | None = None
+_BGUTIL_DIR  = "/bgutil/server"
+_BGUTIL_PORT = 4416
+
+
+async def _start_bgutil_server():
+    """Start bgutil PO-token server. No-op if already running or not installed."""
+    global _bgutil_proc
+
+    if not os.path.isdir(_BGUTIL_DIR):
+        logger.warning(
+            "bgutil server not found — YouTube downloads will likely be blocked. "
+            "Rebuild the Docker image (Dockerfile includes the build step)."
+        )
+        return
+
+    # Already running check (e.g. after hot restart)
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=1.0) as c:
+            r = await c.get(f"http://127.0.0.1:{_BGUTIL_PORT}/")
+            if r.status_code < 500:
+                logger.info(f"bgutil server already running ✓  (port {_BGUTIL_PORT})")
+                return
+    except Exception:
+        pass
+
+    logger.info("Starting bgutil PO-token server...")
+    try:
+        _bgutil_proc = await asyncio.create_subprocess_exec(
+            "node", "build/main.js",
+            cwd=_BGUTIL_DIR,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        # Poll up to 8 seconds for it to bind
+        for _ in range(16):
+            await asyncio.sleep(0.5)
+
+            if _bgutil_proc.returncode is not None:
+                err = b""
+                try:
+                    err = await asyncio.wait_for(_bgutil_proc.stderr.read(500), timeout=1)
+                except Exception:
+                    pass
+                logger.error(
+                    f"bgutil server crashed on start (code {_bgutil_proc.returncode}): "
+                    f"{err.decode(errors='replace')}"
+                )
+                return
+
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=1.0) as c:
+                    await c.get(f"http://127.0.0.1:{_BGUTIL_PORT}/")
+                logger.info(f"bgutil PO-token server started ✓  (port {_BGUTIL_PORT})")
+                return
+            except Exception:
+                continue
+
+        logger.warning("bgutil server process running but not yet responding — continuing anyway")
+
+    except FileNotFoundError:
+        logger.warning("node not found — bgutil disabled. Add nodejs to Dockerfile.")
+    except Exception as e:
+        logger.error(f"bgutil server start error: {e}")
+
+
+async def _stop_bgutil_server():
+    global _bgutil_proc
+    if _bgutil_proc and _bgutil_proc.returncode is None:
+        try:
+            _bgutil_proc.terminate()
+            await asyncio.wait_for(_bgutil_proc.wait(), timeout=5)
+        except Exception:
+            pass
+        _bgutil_proc = None
+        logger.info("bgutil server stopped.")
 
 
 # ── Job processor ─────────────────────────────────────────────────────────────
@@ -243,26 +368,6 @@ async def worker_loop(bot: Client):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-async def _update_ytdlp():
-    """Keep yt-dlp up-to-date on every startup — critical for YouTube bot-detection bypass."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "pip", "install", "--upgrade", "--quiet", "yt-dlp",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-        if proc.returncode == 0:
-            import yt_dlp as _ydlp
-            logger.info(f"yt-dlp updated ✓  (version: {_ydlp.version.__version__})")
-        else:
-            logger.warning(f"yt-dlp update skipped: {stderr.decode()[:200]}")
-    except asyncio.TimeoutError:
-        logger.warning("yt-dlp update timed out (non-fatal)")
-    except Exception as e:
-        logger.warning(f"yt-dlp update failed (non-fatal): {e}")
-
-
 async def main():
     if not all([API_ID, API_HASH, BOT_TOKEN]):
         logger.critical("Missing API_ID, API_HASH, or BOT_TOKEN — check your environment variables!")
@@ -270,23 +375,26 @@ async def main():
 
     ensure_tmp_dir()
 
-    # Always run latest yt-dlp — YouTube anti-bot changes frequently
+    # Step 1: always run latest yt-dlp
     await _update_ytdlp()
+
+    # Step 2: start bgutil PO-token server (fixes YouTube, Spotify, Apple Music)
+    await _start_bgutil_server()
 
     platform = detect_platform()
     logger.info(f"Hosting platform: {platform}")
 
-    # MongoDB
+    # Step 3: MongoDB
     if not await ping():
         logger.critical("Cannot connect to MongoDB — check MONGO_URI!")
         sys.exit(1)
     logger.info("MongoDB connected ✓")
     await init_indexes()
 
-    # HTTP server (required by every hosting platform for health checks)
+    # Step 4: HTTP server
     http_runner = await start_http_server()
 
-    # Bot
+    # Step 5: Bot
     bot = Client(
         name="mediafetch_bot",
         api_id=API_ID,
@@ -315,13 +423,13 @@ async def main():
         except Exception:
             pass
         await close_mongo()
+        await _stop_bgutil_server()
         try:
             await http_runner.cleanup()
         except Exception:
             pass
         logger.info("Shutdown complete.")
 
-    # Signal handlers (SIGINT = Ctrl-C, SIGTERM = platform shutdown)
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()
         for sig, name in [(signal.SIGINT, "SIGINT"), (signal.SIGTERM, "SIGTERM")]:
