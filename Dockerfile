@@ -24,11 +24,10 @@ COPY . .
 # Create runtime directories
 RUN mkdir -p tmp logs
 
-# Expose HTTP port (for Render/Heroku/Railway health checks)
+# Expose HTTP port (for Render / Heroku / Railway / Fly health checks)
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8080/ping')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ping')" || exit 1
 
 CMD ["python", "app.py"]
