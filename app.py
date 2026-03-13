@@ -243,12 +243,35 @@ async def worker_loop(bot: Client):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+async def _update_ytdlp():
+    """Keep yt-dlp up-to-date on every startup — critical for YouTube bot-detection bypass."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "pip", "install", "--upgrade", "--quiet", "yt-dlp",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        if proc.returncode == 0:
+            import yt_dlp as _ydlp
+            logger.info(f"yt-dlp updated ✓  (version: {_ydlp.version.__version__})")
+        else:
+            logger.warning(f"yt-dlp update skipped: {stderr.decode()[:200]}")
+    except asyncio.TimeoutError:
+        logger.warning("yt-dlp update timed out (non-fatal)")
+    except Exception as e:
+        logger.warning(f"yt-dlp update failed (non-fatal): {e}")
+
+
 async def main():
     if not all([API_ID, API_HASH, BOT_TOKEN]):
         logger.critical("Missing API_ID, API_HASH, or BOT_TOKEN — check your environment variables!")
         sys.exit(1)
 
     ensure_tmp_dir()
+
+    # Always run latest yt-dlp — YouTube anti-bot changes frequently
+    await _update_ytdlp()
 
     platform = detect_platform()
     logger.info(f"Hosting platform: {platform}")
