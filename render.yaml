@@ -1,9 +1,9 @@
 services:
   - type: web
     name: mediafetch-bot
-    env: python
-    buildCommand: pip install -r requirements.txt && apt-get install -y ffmpeg
-    startCommand: python app.py
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
     envVars:
       - key: API_ID
         sync: false
@@ -13,7 +13,11 @@ services:
         sync: false
       - key: MONGO_URI
         sync: false
-      - key: APP_URL
-        sync: false
+      - key: MONGO_DB
+        value: mediafetch
       - key: PORT
         value: 8080
+      - key: APP_URL
+        sync: false          # set to your Render URL e.g. https://mediafetch-bot.onrender.com
+      - key: PING_INTERVAL
+        value: 280           # slightly under Render's 5-min sleep window
