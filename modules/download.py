@@ -3,10 +3,10 @@ modules/download.py
 Download logic for 4 supported platforms.
 
 Platform routing:
-  YouTube        → yt-dlp (video/audio/playlists)
-  Spotify        → spotDL (native MP3 320kbps)
-  Apple Music    → iTunes Lookup API (metadata) → YouTube Music search → yt-dlp (MP3 + thumbnail)
-  Instagram      → yt-dlp (posts, reels, stories, photos)
+  YouTube        → yt-dlp  (web_creator + tv_embedded clients bypass bot detection)
+  Spotify        → spotDL  (native MP3 320kbps)
+  Apple Music    → iTunes Lookup API → YouTube search → yt-dlp (MP3)
+  Instagram      → yt-dlp  (posts, reels, stories, photos)
 
 Unsupported URLs raise ValueError with a user-friendly message.
 """
@@ -22,6 +22,7 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
+import shutil as _shutil
 
 import httpx
 import yt_dlp
@@ -33,7 +34,8 @@ from modules.util import safe_filename, ensure_tmp_dir
 
 logger = logging.getLogger(__name__)
 
-_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="dl")
+# More workers = faster parallel downloads
+_EXECUTOR = ThreadPoolExecutor(max_workers=6, thread_name_prefix="dl")
 
 _DEFAULT_RESOLUTIONS = ["1080p", "720p", "480p", "360p"]
 _AUDIO_ONLY          = ["audio"]
@@ -50,6 +52,29 @@ QUALITY_FORMATS = {
     "best":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
 }
 
+# ── YouTube bot-detection bypass ──────────────────────────────────────────────
+#
+# Render / Railway / Fly IPs are datacenter addresses — YouTube detects them and
+# requires a "sign-in" to prove you're human.
+#
+# Fix: use the "web_creator" + "tv_embedded" player clients. These clients do NOT
+# require PO tokens on most videos and bypass the bot-check that hits `android`.
+# Fallback chain: web_creator → tv_embedded → mweb
+# ─────────────────────────────────────────────────────────────────────────────
+
+_YT_EXTRACTOR_ARGS = {
+    "youtube": {
+        "player_client": ["web_creator", "tv_embedded", "mweb"],
+        "player_skip":   ["configs"],
+    }
+}
+
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+
 _BASE_OPTS = {
     "quiet":                         True,
     "no_warnings":                   True,
@@ -58,19 +83,22 @@ _BASE_OPTS = {
     "concurrent_fragment_downloads": 8,
     "http_chunk_size":               10 * 1024 * 1024,
     "skip_unavailable_fragments":    True,
-    "retries":                       3,
-    "fragment_retries":              3,
+    "retries":                       5,
+    "fragment_retries":              5,
+    "file_access_retries":           3,
     "merge_output_format":           "mp4",
-    "extractor_args":                {"youtube": {"player_client": ["android"]}},
+    "extractor_args":                _YT_EXTRACTOR_ARGS,
+    "http_headers":                  {"User-Agent": _BROWSER_UA},
 }
 
 _FAST_META_OPTS = {
-    "quiet":         True,
-    "no_warnings":   True,
-    "skip_download": True,
-    "noplaylist":    True,
+    "quiet":          True,
+    "no_warnings":    True,
+    "skip_download":  True,
+    "noplaylist":     True,
     "socket_timeout": 10,
-    "extractor_args": {"youtube": {"player_client": ["android"]}},
+    "extractor_args": _YT_EXTRACTOR_ARGS,
+    "http_headers":   {"User-Agent": _BROWSER_UA},
 }
 
 # ── In-memory metadata cache ──────────────────────────────────────────────────
@@ -101,7 +129,6 @@ def _is_youtube(url: str) -> bool:
 
 
 def _is_spotify(url: str) -> bool:
-    """True for any Spotify track, album or playlist URL."""
     u = url.lower()
     return "open.spotify.com/" in u and any(
         p in u for p in ("/track/", "/album/", "/playlist/")
@@ -119,7 +146,6 @@ def _is_spotify_playlist(url: str) -> bool:
 
 
 def _is_apple_music(url: str) -> bool:
-    """True for any Apple Music song, album or playlist URL."""
     u = url.lower()
     return "music.apple.com/" in u and any(
         p in u for p in ("/song/", "/album/", "/playlist/")
@@ -197,6 +223,7 @@ def _size_mb(path: str) -> float:
 # ── YouTube metadata ──────────────────────────────────────────────────────────
 
 async def _fetch_youtube_oembed(url: str) -> Optional[dict]:
+    """Fast oEmbed metadata — ~100ms, zero bot detection."""
     try:
         async with httpx.AsyncClient(timeout=5, follow_redirects=True) as http:
             r = await http.get(f"https://www.youtube.com/oembed?url={url}&format=json")
@@ -235,9 +262,9 @@ async def _fetch_spotify_meta(url: str) -> Optional[dict]:
             r = await http.get(f"https://open.spotify.com/oembed?url={url}")
             if r.status_code == 200:
                 data = r.json()
-                title = data.get("title", "")
+                title     = data.get("title", "")
                 thumbnail = data.get("thumbnail_url", "")
-                desc = data.get("description", "")
+                desc      = data.get("description", "")
                 if "·" in desc:
                     artist = desc.split("·")[0].strip()
         except Exception as e:
@@ -250,8 +277,7 @@ async def _fetch_spotify_meta(url: str) -> Optional[dict]:
                     html = r2.text
                     m = re.search(r'<meta\s+property="og:description"\s+content="([^"]+)"', html)
                     if m:
-                        desc = m.group(1)
-                        parts = desc.split("·")
+                        parts = m.group(1).split("·")
                         if parts:
                             artist = parts[0].strip()
                     m4 = re.search(r'"duration"\s*:\s*"PT(\d+)M(\d+)S"', html)
@@ -295,7 +321,7 @@ async def _download_spotify(
         "--output", "{title} - {artists}",
         "--format", "mp3",
         "--bitrate", "320k",
-        "--threads", "1",
+        "--threads", "4",   # parallel fragment downloads
     ]
     logger.info(f"spotDL: {' '.join(cmd)}")
 
@@ -354,12 +380,12 @@ async def _fetch_apple_music_meta(url: str) -> Optional[dict]:
     if not results:
         return None
 
-    track    = results[0]
-    title    = safe_filename(track.get("trackName") or track.get("collectionName") or "Unknown")
-    artist   = track.get("artistName") or "Unknown"
-    album    = track.get("collectionName") or ""
-    dur_ms   = int(track.get("trackTimeMillis") or 0)
-    thumb    = track.get("artworkUrl100", "").replace("100x100bb", "600x600bb")
+    track   = results[0]
+    title   = safe_filename(track.get("trackName") or track.get("collectionName") or "Unknown")
+    artist  = track.get("artistName") or "Unknown"
+    album   = track.get("collectionName") or ""
+    dur_ms  = int(track.get("trackTimeMillis") or 0)
+    thumb   = track.get("artworkUrl100", "").replace("100x100bb", "600x600bb")
 
     return {
         "title":         title,
@@ -376,26 +402,18 @@ async def _fetch_apple_music_meta(url: str) -> Optional[dict]:
 
 
 async def _fetch_apple_music_meta_any(url: str) -> Optional[dict]:
-    """
-    Universal Apple Music metadata fetcher — handles any URL shape:
-      /song/title/ID  · /song/ID  · /album/title/ID?i=TRACK_ID  · bare numeric ID
-    Playlist/album entries may come in as music.apple.com/song/NUMERIC_ID
-    without the standard slug, so we extract the ID and call iTunes API directly.
-    """
+    """Universal Apple Music metadata — handles any URL shape."""
     song_id = ""
 
-    # ?i=TRACK_ID  (album page with track selected, e.g. /album/name/123?i=456)
     m = re.search(r"[?&]i=(\d+)", url)
     if m:
         song_id = m.group(1)
 
-    # /song/slug/ID  or  /song/ID
     if not song_id:
         m = re.search(r"/song/(?:[^/?]+/)?(\d+)", url)
         if m:
             song_id = m.group(1)
 
-    # last path segment that is a long number (≥6 digits)
     if not song_id:
         m = re.search(r"/(\d{6,})(?:[/?]|$)", url)
         if m:
@@ -409,14 +427,10 @@ async def _fetch_apple_music_meta_any(url: str) -> Optional[dict]:
     return await _fetch_apple_music_meta(synthetic)
 
 
-# ── Apple Music: YouTube search via yt-dlp (no extra deps) ───────────────────
+# ── Apple Music: YouTube search via yt-dlp ────────────────────────────────────
 
 async def _search_youtube_for_track(artist: str, title: str) -> Optional[str]:
-    """
-    Search YouTube for 'title artist audio' using yt-dlp's ytsearch.
-    Returns the URL of the best match, or None.
-    No ytmusicapi or API key needed — works out of the box.
-    """
+    """ytsearch via yt-dlp — no API key needed."""
     query    = f"ytsearch5:{title} {artist} audio"
     ydl_opts = {
         "quiet":          True,
@@ -425,7 +439,7 @@ async def _search_youtube_for_track(artist: str, title: str) -> Optional[str]:
         "extract_flat":   True,
         "noplaylist":     True,
         "socket_timeout": 10,
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "extractor_args": _YT_EXTRACTOR_ARGS,
     }
 
     def _search():
@@ -446,14 +460,12 @@ async def _search_youtube_for_track(artist: str, title: str) -> Optional[str]:
         logger.warning(f"YouTube search failed: {e}")
         return None
 
-    # Pick the first result whose duration looks like a song (under 10 min)
     for e in entries:
         vid = e.get("id") or e.get("url", "").split("v=")[-1]
         dur = e.get("duration") or 0
         if vid and 0 < float(dur) <= 600:
             return f"https://www.youtube.com/watch?v={vid}"
 
-    # Fallback: just return first result
     for e in entries:
         vid = e.get("id") or ""
         if vid and len(vid) == 11:
@@ -469,17 +481,8 @@ async def _download_apple_music(
     user_id: int,
     progress_callback: Optional[Callable] = None,
 ) -> Optional[dict]:
-    """
-    Flow:
-      1. iTunes Lookup API  → title, artist, artwork
-         (works for /song/, /album/track, and bare numeric IDs)
-      2. ytsearch5: via yt-dlp  → best YouTube match
-      3. yt-dlp → MP3 320kbps + embed thumbnail + ID3 tags
-    No DRM, no tokens, no cookies, no ytmusicapi needed.
-    """
     ensure_tmp_dir()
 
-    # Fetch metadata — works even when URL is from an album/playlist entry
     meta = _cache_get(url) or await _fetch_apple_music_meta_any(url)
     if not meta:
         raise ValueError("Could not fetch Apple Music metadata. Check the URL.")
@@ -523,19 +526,12 @@ async def _download_apple_music(
         "outtmpl":        outtmpl,
         "progress_hooks": [_progress_hook],
         "writethumbnail": True,
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "extractor_args": _YT_EXTRACTOR_ARGS,
         "postprocessors": [
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"},
-            {
-                "key":          "FFmpegMetadata",
-                "add_metadata": True,
-                "add_chapters": False,
-            },
+            {"key": "FFmpegMetadata", "add_metadata": True, "add_chapters": False},
             {"key": "EmbedThumbnail"},
         ],
-        # Overwrite ID3 tags with Spotify/Apple metadata (not YouTube title)
-        "parse_metadata": [f":{title}:%(title)s"],
-        "add_metadata":    True,
     }
 
     def _download():
@@ -547,7 +543,6 @@ async def _download_apple_music(
     except yt_dlp.utils.DownloadError as e:
         raise ValueError(f"Apple Music download failed: {e}")
 
-    # Find the resulting mp3 (yt-dlp names it by video ID)
     mp3_files = glob.glob(os.path.join(tmp_dir, "*.mp3"))
     if not mp3_files:
         for pattern in ("*.m4a", "*.aac", "*.opus", "*.ogg", "*.webm"):
@@ -614,7 +609,6 @@ async def _download_instagram(
             raise ValueError("This Instagram content is private or requires login.")
         raise ValueError(f"Instagram download failed: {e}")
 
-    # Collect all downloaded files (handles albums/carousels)
     all_files = [
         os.path.join(tmp_dir, f)
         for f in os.listdir(tmp_dir)
@@ -623,7 +617,6 @@ async def _download_instagram(
     if not all_files:
         raise ValueError("Instagram: no files downloaded.")
 
-    # Build media list
     def _media_entry(fpath, entry_info=None):
         ext   = fpath.rsplit(".", 1)[-1].lower()
         mtype = "photo" if ext in ("jpg", "jpeg", "png", "webp") else "video"
@@ -648,7 +641,7 @@ async def _download_instagram(
         "uploader":      primary["uploader"],
         "thumbnail_url": primary["thumbnail_url"],
         "size_mb":       primary["size_mb"],
-        "_all_media":    media_list,  # full album/carousel
+        "_all_media":    media_list,
     }
 
 
@@ -688,7 +681,7 @@ async def _download_ytdlp(
 
     if is_audio:
         ydl_opts.update({
-            "format": "bestaudio/best",
+            "format":         "bestaudio/best",
             "writethumbnail": True,
             "postprocessors": [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"},
@@ -729,6 +722,12 @@ async def _download_ytdlp(
 
     except yt_dlp.utils.DownloadError as e:
         msg = str(e).lower()
+        # Clear, helpful message for the bot-detection error
+        if "sign in" in msg or "confirm" in msg and "bot" in msg:
+            raise ValueError(
+                "⚠️ YouTube is temporarily blocking this server.\n"
+                "Please try again in a few minutes, or try a different video."
+            )
         if "private"       in msg: raise ValueError("This content is private or requires login.")
         if "geo"           in msg: raise ValueError("This content is not available in your region.")
         if "not available" in msg: raise ValueError("This content is not available.")
@@ -811,14 +810,12 @@ async def fetch_metadata(url: str) -> Optional[dict]:
         return meta
 
     elif _is_instagram(url):
-        # Fast yt-dlp metadata for Instagram
         meta = await _fetch_ydlp_meta(url)
         if meta:
             meta["platform"] = "Instagram"
             _cache_set(url, meta)
         return meta
 
-    # YouTube fallback via yt-dlp (playlists, etc.)
     meta = await _fetch_ydlp_meta(url)
     if meta:
         _cache_set(url, meta)
@@ -905,16 +902,7 @@ async def fetch_apple_music_album_metadata(url: str) -> Optional[dict]:
 
 async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
     """
-    Fetch Apple Music playlist tracks with three strategies (in order):
-      1. <script id="serialized-server-data">  — Apple's Next.js JSON blob
-         Has full track list with IDs, artists, duration, artwork
-      2. <script type="application/ld+json">  — MusicPlaylist JSON-LD schema
-         Reliable for track names + URLs when strategy 1 fails
-      3. Regex mine all song URLs from page HTML
-         Last resort — gets song URLs even without metadata
-
-    Each found track becomes a music.apple.com/song/ID URL so
-    _download_apple_music() works unchanged.
+    3-strategy Apple Music playlist scraper.
     """
     playlist_id = _apple_playlist_id(url)
     if not playlist_id:
@@ -950,7 +938,7 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
     thumbnail = ""
     entries   = []
 
-    # ── Strategy 1: serialized-server-data (Next.js JSON blob) ───────────────
+    # Strategy 1: serialized-server-data
     m = re.search(
         r'<script id="serialized-server-data"[^>]*>(\[.+?\])</script>',
         html, re.DOTALL
@@ -969,12 +957,12 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
                         and obj["attributes"].get("name")
                         and obj.get("relationships", {}).get("tracks")
                     ):
-                        attrs     = obj.get("attributes", {})
-                        name      = attrs.get("name", "")
-                        rels      = obj.get("relationships", {})
+                        attrs      = obj.get("attributes", {})
+                        name       = attrs.get("name", "")
+                        rels       = obj.get("relationships", {})
                         track_data = rels.get("tracks", {}).get("data") or []
-                        art_obj   = attrs.get("artwork", {})
-                        art_url   = art_obj.get("url", "")
+                        art_obj    = attrs.get("artwork", {})
+                        art_url    = art_obj.get("url", "")
                         if art_url:
                             art_url = art_url.replace("{w}", "600").replace("{h}", "600").replace("{f}", "jpg")
                         if name and track_data:
@@ -1009,12 +997,11 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
                     if not track_url:
                         continue
                     entries.append(_apple_entry(i, track_id, track_name, artist, dur_ms // 1000, art_url, track_url))
-
             logger.info(f"Apple Music playlist strategy 1: {len(entries)} tracks")
         except Exception as e:
             logger.debug(f"Apple Music serialized-server-data parse failed: {e}")
 
-    # ── Strategy 2: JSON-LD MusicPlaylist schema ──────────────────────────────
+    # Strategy 2: JSON-LD
     if not entries:
         for ld_raw in re.findall(
             r'<script type="application/ld\+json"[^>]*>(.+?)</script>', html, re.DOTALL
@@ -1049,7 +1036,7 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
                 continue
         logger.info(f"Apple Music playlist strategy 2: {len(entries)} tracks")
 
-    # ── Strategy 3: regex mine song URLs ─────────────────────────────────────
+    # Strategy 3: regex
     if not entries:
         seen = set()
         for song_url in re.findall(
@@ -1066,7 +1053,6 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
             entries.append(_apple_entry(len(entries), tid, safe_filename(slug), "", 0, "", clean))
         logger.info(f"Apple Music playlist strategy 3: {len(entries)} tracks")
 
-    # og: tags for title/thumbnail fallbacks
     if not pl_title:
         m2 = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', html)
         if m2:
@@ -1095,29 +1081,12 @@ async def fetch_apple_music_playlist_metadata(url: str) -> Optional[dict]:
 
 
 # ── Spotify playlist / album metadata via spotDL save ────────────────────────
-#
-# Spotify's web pages are JavaScript-rendered — scraping __NEXT_DATA__ no
-# longer reliably contains track lists.  spotDL's `save` command is the only
-# approach that works without a Spotify API key:
-#
-#   spotdl save PLAYLIST_URL --save-file out.spotdl
-#
-# The .spotdl file is plain JSON — an array of song objects:
-#   [{"name":…, "artists":[…], "song_id":…, "duration":…, "cover_url":…, …}]
-#
-# This is fast (~5-15 s for large playlists), requires no auth, and gives us
-# full title/artist/duration/artwork for every track.
-# ─────────────────────────────────────────────────────────────────────────────
-
-import shutil as _shutil
-
 
 def _make_spotify_entry(i: int, song: dict) -> dict:
-    """Build a playlist entry dict from a spotDL song object."""
-    tid    = song.get("song_id") or ""
-    name   = safe_filename(song.get("name") or f"Track {i+1}")
-    artists = song.get("artists") or []
-    artist  = ", ".join(artists) if isinstance(artists, list) else str(artists)
+    tid      = song.get("song_id") or ""
+    name     = safe_filename(song.get("name") or f"Track {i+1}")
+    artists  = song.get("artists") or []
+    artist   = ", ".join(artists) if isinstance(artists, list) else str(artists)
     duration = int(song.get("duration") or 0)
     thumb    = song.get("cover_url") or ""
     track_url = (
@@ -1147,18 +1116,11 @@ def _make_spotify_entry(i: int, song: dict) -> dict:
 
 
 async def _spotdl_save(url: str) -> Optional[list]:
-    """
-    Run `spotdl save URL --save-file out.spotdl` and return the parsed song list.
-    Returns None on failure.  Cleans up temp dir automatically.
-    """
     ensure_tmp_dir()
     tmp_dir   = tempfile.mkdtemp(prefix="sp_save_", dir=TMP_DIR)
     save_file = os.path.join(tmp_dir, "tracks.spotdl")
 
-    cmd = [
-        SPOTDL_BIN, "save", url,
-        "--save-file", save_file,
-    ]
+    cmd = [SPOTDL_BIN, "save", url, "--save-file", save_file]
     logger.info(f"spotDL save: {' '.join(cmd)}")
 
     loop = asyncio.get_running_loop()
@@ -1182,7 +1144,6 @@ async def _spotdl_save(url: str) -> Optional[list]:
         with open(save_file, encoding="utf-8") as f:
             data = json.load(f)
 
-        # spotDL wraps the list in {"type":…, "songs":[…]} in newer versions
         if isinstance(data, dict) and "songs" in data:
             data = data["songs"]
 
@@ -1201,7 +1162,6 @@ async def _spotdl_save(url: str) -> Optional[list]:
 
 
 async def _spotify_oembed_title_thumb(url: str) -> tuple[str, str]:
-    """Quick oEmbed call for playlist/album title + thumbnail."""
     try:
         async with httpx.AsyncClient(timeout=6, follow_redirects=True) as http:
             r = await http.get(f"https://open.spotify.com/oembed?url={url}")
@@ -1217,13 +1177,8 @@ async def _spotify_oembed_title_thumb(url: str) -> tuple[str, str]:
 
 
 async def fetch_spotify_playlist_metadata(url: str) -> Optional[dict]:
-    """
-    Fetch Spotify playlist tracks using spotDL save.
-    No scraping, no API key needed — works with any public playlist.
-    """
     songs = await _spotdl_save(url)
     if not songs:
-        logger.warning(f"spotDL save returned no tracks for {url[:60]}")
         return None
 
     pl_title, thumbnail = await _spotify_oembed_title_thumb(url)
@@ -1231,7 +1186,6 @@ async def fetch_spotify_playlist_metadata(url: str) -> Optional[dict]:
         pl_title = "Spotify Playlist"
 
     entries = [_make_spotify_entry(i, s) for i, s in enumerate(songs)]
-
     logger.info(f"Spotify playlist: {len(entries)} tracks — '{pl_title}'")
     return {
         "playlist_title": pl_title,
@@ -1245,21 +1199,15 @@ async def fetch_spotify_playlist_metadata(url: str) -> Optional[dict]:
 
 
 async def fetch_spotify_album_metadata(url: str) -> Optional[dict]:
-    """
-    Fetch Spotify album tracks using spotDL save.
-    """
     songs = await _spotdl_save(url)
     if not songs:
-        logger.warning(f"spotDL save returned no tracks for {url[:60]}")
         return None
 
     pl_title, thumbnail = await _spotify_oembed_title_thumb(url)
     if not pl_title:
         pl_title = "Spotify Album"
 
-    entries = [_make_spotify_entry(i, s) for i, s in enumerate(songs)]
-
-    # Album artist = artist of first track
+    entries      = [_make_spotify_entry(i, s) for i, s in enumerate(songs)]
     album_artist = entries[0]["uploader"].split(",")[0].strip() if entries else "Spotify"
 
     logger.info(f"Spotify album: {len(entries)} tracks — '{pl_title}'")
@@ -1289,14 +1237,13 @@ async def fetch_playlist_metadata(url: str) -> Optional[dict]:
     if not _is_youtube(url):
         return None
 
-    # YouTube playlist via yt-dlp
     ydl_opts = {
-        "quiet":         True,
-        "no_warnings":   True,
-        "skip_download": True,
-        "extract_flat":  True,
+        "quiet":          True,
+        "no_warnings":    True,
+        "skip_download":  True,
+        "extract_flat":   True,
         "socket_timeout": 10,
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "extractor_args": _YT_EXTRACTOR_ARGS,
     }
 
     def _extract():
@@ -1370,5 +1317,4 @@ async def download_media(
     if _is_instagram(url):
         return await _download_instagram(url, user_id, progress_callback)
 
-    # YouTube (and yt-dlp fallback)
     return await _download_ytdlp(url, user_id, quality, progress_callback)
