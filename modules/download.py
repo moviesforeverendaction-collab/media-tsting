@@ -61,6 +61,7 @@ _BASE_OPTS = {
     "retries":                       3,
     "fragment_retries":              3,
     "merge_output_format":           "mp4",
+    "extractor_args":                {"youtube": {"player_client": ["android"]}},
 }
 
 _FAST_META_OPTS = {
@@ -69,6 +70,7 @@ _FAST_META_OPTS = {
     "skip_download": True,
     "noplaylist":    True,
     "socket_timeout": 10,
+    "extractor_args": {"youtube": {"player_client": ["android"]}},
 }
 
 # ── In-memory metadata cache ──────────────────────────────────────────────────
@@ -423,6 +425,7 @@ async def _search_youtube_for_track(artist: str, title: str) -> Optional[str]:
         "extract_flat":   True,
         "noplaylist":     True,
         "socket_timeout": 10,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
 
     def _search():
@@ -520,6 +523,7 @@ async def _download_apple_music(
         "outtmpl":        outtmpl,
         "progress_hooks": [_progress_hook],
         "writethumbnail": True,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
         "postprocessors": [
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"},
             {
@@ -1292,6 +1296,7 @@ async def fetch_playlist_metadata(url: str) -> Optional[dict]:
         "skip_download": True,
         "extract_flat":  True,
         "socket_timeout": 10,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
 
     def _extract():
