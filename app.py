@@ -1,6 +1,17 @@
 """
 app.py — MediaFetch Bot entry point.
-Includes: HTTP /ping endpoint for keep-alive, self-ping loop, worker loop.
+
+Hosts:
+  VPS / Docker Compose  →  docker-compose up
+  Render                →  render.yaml  (env: docker)
+  Railway               →  railway.json (DOCKERFILE builder)
+  Heroku                →  Procfile + Aptfile (heroku-community/apt for ffmpeg)
+  Fly.io                →  fly.toml
+
+HTTP server on $PORT (default 8080):
+  GET /       → 200 "MediaFetch Bot is running"
+  GET /ping   → 200 "pong"
+  GET /health → 200 JSON stats
 """
 
 import asyncio
@@ -12,14 +23,14 @@ import time
 from logging.handlers import RotatingFileHandler
 
 from aiohttp import web
-from pyrogram import Client, enums
+from pyrogram import Client
 from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait
 
 from config import API_ID, API_HASH, BOT_TOKEN, TMP_DIR, LOG_FILE, LOG_DIR, WORKER_SLEEP
 from database.mongo import (
     init_indexes, close_mongo, ping,
-    pop_job, complete_job, decrement_pending,
+    pop_job, complete_job,
     set_user_processing, clear_user_processing,
     should_cancel, clear_cancel, increment_stat,
 )
@@ -36,7 +47,10 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"),
+        RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024,
+            backupCount=3, encoding="utf-8",
+        ),
     ],
 )
 logger = logging.getLogger("app")
@@ -44,16 +58,13 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logging.getLogger("motor").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
+# ── HTTP server ───────────────────────────────────────────────────────────────
 
-# ── HTTP ping server ──────────────────────────────────────────────────────────
-
-async def start_ping_server():
+async def start_http_server():
     """
-    Tiny aiohttp server on PORT (default 8080).
-    Render/Heroku/Railway need an HTTP server to confirm the app is alive.
-    GET /       → 200 OK  "MediaFetch Bot is running"
-    GET /ping   → 200 OK  "pong"
-    GET /health → 200 OK  JSON stats
+    Tiny aiohttp server.
+    All hosting platforms need an HTTP endpoint alive for health checks.
+    PORT env var is set automatically by Render / Railway / Heroku / Fly.
     """
     port = int(os.getenv("PORT", "8080"))
 
@@ -78,13 +89,13 @@ async def start_ping_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logger.info(f"HTTP server started on port {port} ✓")
+    logger.info(f"HTTP server listening on 0.0.0.0:{port} ✓")
     return runner
 
 
 # ── Job processor ─────────────────────────────────────────────────────────────
 
-async def process_job(app: Client, job: dict):
+async def process_job(bot: Client, job: dict):
     user_id    = job["user_id"]
     chat_id    = job["chat_id"]
     url        = job["url"]
@@ -102,14 +113,14 @@ async def process_job(app: Client, job: dict):
         from modules.ui import download_start_text, format_progress as _fmt_prog
 
         _platform = (
-            "YouTube"     if _is_youtube(url) else
-            "Spotify"     if _is_spotify(url) else
+            "YouTube"     if _is_youtube(url)     else
+            "Spotify"     if _is_spotify(url)     else
             "Apple Music" if _is_apple_music(url) else
-            "Instagram"   if _is_instagram(url) else
+            "Instagram"   if _is_instagram(url)   else
             "Unknown"
         )
 
-        status_msg = await app.send_message(
+        status_msg = await bot.send_message(
             chat_id,
             download_start_text(url, quality, _platform),
             parse_mode=ParseMode.HTML,
@@ -120,24 +131,21 @@ async def process_job(app: Client, job: dict):
             await status_msg.edit_text("🛑 <b>Download cancelled.</b>", parse_mode=ParseMode.HTML)
             return
 
-        import time as _t
-        _last_edit   = [0.0]
-        _last_bytes  = [0]
-        _last_ts     = [_t.monotonic()]
+        _last_edit  = [0.0]
+        _last_bytes = [0]
+        _t0         = [time.monotonic()]
 
         async def on_progress(downloaded: int, total: int):
-            now = _t.monotonic()
+            now = time.monotonic()
             if now - _last_edit[0] < 3:
                 return
-            speed        = (downloaded - _last_bytes[0]) / max(now - _last_edit[0], 0.001)
-            elapsed      = now - _last_ts[0]
+            speed          = (downloaded - _last_bytes[0]) / max(now - _last_edit[0], 0.001)
+            elapsed        = now - _t0[0]
             _last_edit[0]  = now
             _last_bytes[0] = downloaded
-            _last_ts[0]    = now
             try:
                 await status_msg.edit_text(
-                    "📥 <b>Downloading...</b>\n\n"
-                    + _fmt_prog(downloaded, total, speed, elapsed),
+                    "📥 <b>Downloading...</b>\n\n" + _fmt_prog(downloaded, total, speed, elapsed),
                     parse_mode=ParseMode.HTML,
                 )
             except FloodWait as e:
@@ -152,23 +160,31 @@ async def process_job(app: Client, job: dict):
             await status_msg.edit_text("🛑 <b>Download cancelled.</b>", parse_mode=ParseMode.HTML)
             return
 
-        result = await download_media(url=url, user_id=user_id, quality=quality, progress_callback=on_progress)
+        result = await download_media(
+            url=url, user_id=user_id,
+            quality=quality, progress_callback=on_progress,
+        )
 
         if result is None:
-            await status_msg.edit_text("❌ <b>Download failed.</b> File could not be retrieved.", parse_mode=ParseMode.HTML)
+            await status_msg.edit_text(
+                "❌ <b>Download failed.</b> File could not be retrieved.",
+                parse_mode=ParseMode.HTML,
+            )
             await increment_stat("total_errors")
             return
 
-        # Attach user_id as fallback for uploader (msg.from_user can be None in some edge cases)
         result["user_id"] = user_id
 
-        original_msg = await app.get_messages(chat_id, job.get("message_id"))
-        success = await upload_media(client=app, msg=original_msg, status_msg=status_msg, download_result=result)
+        original_msg = await bot.get_messages(chat_id, job.get("message_id"))
+        success = await upload_media(
+            client=bot, msg=original_msg,
+            status_msg=status_msg, download_result=result,
+        )
 
         if success:
             await increment_stat("total_downloads")
             await increment_stat("total_bytes", int(result.get("size_mb", 0) * 1024 * 1024))
-            logger.info(f"Job complete: user={user_id} size={result['size_mb']:.1f}MB")
+            logger.info(f"Job done: user={user_id} size={result.get('size_mb', 0):.1f}MB")
         else:
             await increment_stat("total_errors")
 
@@ -179,7 +195,7 @@ async def process_job(app: Client, job: dict):
             if status_msg:
                 await status_msg.edit_text(f"❌ <b>Error:</b> {e}", parse_mode=ParseMode.HTML)
             else:
-                await app.send_message(chat_id, f"❌ <b>Error:</b> {e}", parse_mode=ParseMode.HTML)
+                await bot.send_message(chat_id, f"❌ <b>Error:</b> {e}", parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
@@ -192,7 +208,10 @@ async def process_job(app: Client, job: dict):
         await increment_stat("total_errors")
         try:
             if status_msg:
-                await status_msg.edit_text("💥 <b>Unexpected error.</b> Please try again.", parse_mode=ParseMode.HTML)
+                await status_msg.edit_text(
+                    "💥 <b>Unexpected error.</b> Please try again.",
+                    parse_mode=ParseMode.HTML,
+                )
         except Exception:
             pass
 
@@ -204,13 +223,15 @@ async def process_job(app: Client, job: dict):
         cleanup_user_tmp(user_id)
 
 
-async def worker_loop(app: Client):
+# ── Worker loop ───────────────────────────────────────────────────────────────
+
+async def worker_loop(bot: Client):
     logger.info("Worker loop started.")
     while True:
         try:
             job = await pop_job()
             if job:
-                asyncio.create_task(process_job(app, job))
+                asyncio.create_task(process_job(bot, job))
             else:
                 await asyncio.sleep(WORKER_SLEEP)
         except asyncio.CancelledError:
@@ -224,57 +245,79 @@ async def worker_loop(app: Client):
 
 async def main():
     if not all([API_ID, API_HASH, BOT_TOKEN]):
-        logger.critical("Missing API_ID, API_HASH, or BOT_TOKEN in .env!")
+        logger.critical("Missing API_ID, API_HASH, or BOT_TOKEN — check your environment variables!")
         sys.exit(1)
 
     ensure_tmp_dir()
-    platform = detect_platform()
-    logger.info(f"Detected platform: {platform}")
 
+    platform = detect_platform()
+    logger.info(f"Hosting platform: {platform}")
+
+    # MongoDB
     if not await ping():
-        logger.critical("Cannot connect to MongoDB! Check MONGO_URI.")
+        logger.critical("Cannot connect to MongoDB — check MONGO_URI!")
         sys.exit(1)
     logger.info("MongoDB connected ✓")
     await init_indexes()
 
-    # Start HTTP server (required for Render/Heroku/Railway)
-    http_runner = await start_ping_server()
+    # HTTP server (required by every hosting platform for health checks)
+    http_runner = await start_http_server()
 
-    bot = Client(name="mediafetch_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+    # Bot
+    bot = Client(
+        name="mediafetch_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+    )
     register_handlers(bot)
 
-    worker_task   = None
-    ping_task     = None
+    worker_task = None
+    ping_task   = None
 
-    async def shutdown():
-        logger.info("Shutting down...")
+    async def shutdown(sig_name=""):
+        if sig_name:
+            logger.info(f"Received {sig_name} — shutting down...")
+        else:
+            logger.info("Shutting down...")
         for t in [worker_task, ping_task]:
-            if t:
+            if t and not t.done():
                 t.cancel()
                 try:
                     await t
                 except asyncio.CancelledError:
                     pass
-        await bot.stop()
+        try:
+            await bot.stop()
+        except Exception:
+            pass
         await close_mongo()
-        await http_runner.cleanup()
+        try:
+            await http_runner.cleanup()
+        except Exception:
+            pass
+        logger.info("Shutdown complete.")
 
+    # Signal handlers (SIGINT = Ctrl-C, SIGTERM = platform shutdown)
     if sys.platform != "win32":
-        loop = asyncio.get_event_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+        loop = asyncio.get_running_loop()
+        for sig, name in [(signal.SIGINT, "SIGINT"), (signal.SIGTERM, "SIGTERM")]:
+            loop.add_signal_handler(
+                sig,
+                lambda n=name: asyncio.create_task(shutdown(n)),
+            )
 
-    logger.info("Starting bot...")
+    logger.info("Starting Pyrogram bot...")
     await bot.start()
     me = await bot.get_me()
-    logger.info(f"Bot started as @{me.username} ✓")
+    logger.info(f"Bot started: @{me.username} ✓")
 
     worker_task = asyncio.create_task(worker_loop(bot))
     ping_task   = asyncio.create_task(keep_alive_loop())
 
     logger.info("Bot is running. Press Ctrl+C to stop.")
     try:
-        await worker_task
+        await asyncio.gather(worker_task, ping_task)
     except (KeyboardInterrupt, asyncio.CancelledError):
         await shutdown()
 
